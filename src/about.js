@@ -4,11 +4,7 @@ export default function About (props){
 
 
     return(
-        <Jumbotron style={{textAlign:"center"}}>
-    
-        <h1>Это Демо</h1>
-        <span>Для того чтобы сорешить звонок необходимо зарегестироваться на сайте и войти на него, сделать это можно по ссылкам вверху</span>
-        
-        </Jumbotron>        
-        )
+        <div>
+        <img style={{width:"100%"}} src="https://i.imgur.com/mxGBPYR.png"></img>
+        </div>)
 }

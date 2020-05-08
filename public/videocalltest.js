@@ -43,11 +43,8 @@
 // the whole session.
 //
 var server = null;
-if(window.location.protocol === 'http:')
-	server = "http://" + window.location.hostname + ":8088/janus";
-else
-	server = "https://" + window.location.hostname + ":8089/janus";
-
+server = "https://" + window.location.hostname + "/janus";
+var peers;
 var janus = null;
 var videocall = null;
 var opaqueId = "videocalltest-"+Janus.randomString(12);
@@ -57,20 +54,26 @@ var spinner = null;
 
 var audioenabled = false;
 var videoenabled = false;
-
+var hand;
 var myusername = null;
 var yourusername = null;
-
+function getCookie(name) {
+	const value = `; ${document.cookie}`;
+	const parts = value.split(`; ${name}=`);
+	if (parts.length === 2) return parts.pop().split(';').shift();
+  }
 var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
 var doSimulcast2 = (getQueryStringValue("simulcast2") === "yes" || getQueryStringValue("simulcast2") === "true");
 var simulcastStarted = false;
-
+var y = ()=>document.querySelector("#register").click()
 $(document).ready(function() {
 	// Initialize the library (console debug enabled)
 	Janus.init({debug: true, callback: function() {
 		// Use a button to start the demo
-		$('#start').one('click', function() {
-			$(this).attr('disabled', true).unbind('click');
+		
+			document.querySelector("#username").value = getCookie("name")
+			
+			
 			// Make sure the browser supports WebRTC
 			if(!Janus.isWebrtcSupported()) {
 				bootbox.alert("No WebRTC support... ");
@@ -80,6 +83,7 @@ $(document).ready(function() {
 			janus = new Janus(
 				{
 					server: server,
+					token: getCookie("token"),
 					success: function() {
 						// Attach to VideoCall plugin
 						janus.attach(
@@ -87,20 +91,34 @@ $(document).ready(function() {
 								plugin: "janus.plugin.videocall",
 								opaqueId: opaqueId,
 								success: function(pluginHandle) {
+									console.log()
+									hand = pluginHandle;
 									$('#details').remove();
 									videocall = pluginHandle;
 									Janus.log("Plugin attached! (" + videocall.getPlugin() + ", id=" + videocall.getId() + ")");
 									// Prepare the username registration
 									$('#videocall').removeClass('hide').show();
-									$('#login').removeClass('hide').show();
+									
 									$('#registernow').removeClass('hide').show();
 									$('#register').click(registerUsername);
+									y();
+									
 									$('#username').focus();
 									$('#start').removeAttr('disabled').html("Stop")
 										.click(function() {
 											$(this).attr('disabled', true);
 											janus.destroy();
 										});
+										fetch(`https://vovqa.me:8089/janus/${janus.getSessionId()}/${hand.id}`, {
+										
+											"body": "{\"janus\":\"message\",\"body\":{\"request\":\"list\"},\"transaction\":\"flA8IcR3WvcU\"}",
+											"method": "POST",
+											"mode": "cors",
+											"credentials": "omit"
+											}).then(
+												console.log("lol")
+												
+											)
 								},
 								error: function(error) {
 									Janus.error("  -- Error attaching plugin...", error);
@@ -110,16 +128,8 @@ $(document).ready(function() {
 									Janus.debug("Consent dialog should be " + (on ? "on" : "off") + " now");
 									if(on) {
 										// Darken screen and show hint
-										$.blockUI({
-											message: '<div><img src="up_arrow.png"/></div>',
-											css: {
-												border: 'none',
-												padding: '15px',
-												backgroundColor: 'transparent',
-												color: '#aaa',
-												top: '10px',
-												left: (navigator.mozGetUserMedia ? '-100px' : '300px')
-											} });
+										$.blockUI(
+											);
 									} else {
 										// Restore screen
 										$.unblockUI();
@@ -139,8 +149,27 @@ $(document).ready(function() {
 									if(result !== null && result !== undefined) {
 										if(result["list"] !== undefined && result["list"] !== null) {
 											var list = result["list"];
+											
 											Janus.debug("Got a list of registered peers:");
-											Janus.debug(list);
+											peers = list;
+											console.log(list)
+											document.getElementById("peers").innerHTML = ""
+											peers.forEach(val=>{
+												
+												if(`${val}`.replace(/\s/g, '')!="undefined"&&`${val}`.replace(/\s/g, '')!=getCookie("name")){
+												if(val==undefined){
+													console.log("data:undefined")
+												}
+
+
+												document.getElementById("peers").innerHTML= `${document.getElementById("peers").innerHTML}`+`<li class="list-group-item"> <span style="text-align:center"> ${val} </span> <button class="btn btn-success" id="${val}">Начать звонок</button> </li>`
+												$(`#${val}`).click(()=>{
+													document.querySelector("#peer").value = val;
+													doCall()
+												})
+											
+											}
+											})
 											for(var mp in list) {
 												Janus.debug("  >> [" + list[mp] + "]");
 											}
@@ -151,9 +180,12 @@ $(document).ready(function() {
 												Janus.log("Successfully registered as " + myusername + "!");
 												$('#youok').removeClass('hide').show().html("Registered as '" + myusername + "'");
 												// Get a list of available peers, just for fun
+												
+												hand = videocall
+												setInterval( ()=>videocall.send({"message": { "request": "list" }}),3000)
 												videocall.send({"message": { "request": "list" }});
 												// TODO Enable buttons to call now
-												$('#phone').removeClass('hide').show();
+												$('#call').removeClass('hide')
 												$('#call').unbind('click').click(doCall);
 												$('#peer').focus();
 											} else if(event === 'calling') {
@@ -186,11 +218,13 @@ $(document).ready(function() {
 																		// the following 'simulcast' property to pass to janus.js to true
 																		simulcast: doSimulcast,
 																		success: function(jsep) {
+																			
 																			Janus.debug("Got SDP!");
 																			Janus.debug(jsep);
 																			var body = { "request": "accept" };
 																			videocall.send({"message": body, "jsep": jsep});
 																			$('#peer').attr('disabled', true);
+																			$('#call').removeClass('d-none')
 																			$('#call').removeAttr('disabled').html('Hangup')
 																				.removeClass("btn-success").addClass("btn-danger")
 																				.unbind('click').click(doHangup);
@@ -220,6 +254,12 @@ $(document).ready(function() {
 													Janus.log(peer + " accepted the call!");
 													yourusername = peer;
 												}
+												var body = {
+													"request": "set",
+													"record": true,
+													"filename": "/opt/janus/recordings/" + getCookie("name")
+												}
+												videocall.send({"message": body})
 												// Video call can start
 												if(jsep)
 													videocall.handleRemoteJsep({jsep: jsep});
@@ -258,6 +298,7 @@ $(document).ready(function() {
 													spinner.stop();
 												$('#waitingvideo').remove();
 												$('#videos').hide();
+												$('#callhide').removeClass('hide').show();
 												$('#peer').removeAttr('disabled').val('');
 												$('#call').removeAttr('disabled').html('Call')
 													.removeClass("btn-danger").addClass("btn-success")
@@ -283,6 +324,7 @@ $(document).ready(function() {
 										}
 									} else {
 										// FIXME Error?
+										console.log("fixme");
 										var error = msg["error"];
 										bootbox.alert(error);
 										if(error.indexOf("already taken") > 0) {
@@ -296,6 +338,7 @@ $(document).ready(function() {
 											spinner.stop();
 										$('#waitingvideo').remove();
 										$('#videos').hide();
+										$('#callhide').removeClass('hide').show();
 										$('#peer').removeAttr('disabled').val('');
 										$('#call').removeAttr('disabled').html('Call')
 											.removeClass("btn-danger").addClass("btn-success")
@@ -314,6 +357,8 @@ $(document).ready(function() {
 									Janus.debug(" ::: Got a local stream :::");
 									Janus.debug(stream);
 									$('#videos').removeClass('hide').show();
+									$('#callhide').hide();
+									
 									if($('#myvideo').length === 0)
 										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay playsinline muted="muted"/>');
 									Janus.attachMediaStream($('#myvideo').get(0), stream);
@@ -447,6 +492,8 @@ $(document).ready(function() {
 								ondataopen: function(data) {
 									Janus.log("The DataChannel is available!");
 									$('#videos').removeClass('hide').show();
+									$('#callhide').hide();
+									
 									$('#datasend').removeAttr('disabled');
 								},
 								ondata: function(data) {
@@ -474,6 +521,8 @@ $(document).ready(function() {
 									bitrateTimer = null;
 									$('#waitingvideo').remove();
 									$('#videos').hide();
+									$('#callhide').removeClass('hide').show();
+									
 									simulcastStarted = false;
 									$('#simulcast').remove();
 									$('#peer').removeAttr('disabled').val('');
@@ -493,7 +542,8 @@ $(document).ready(function() {
 						window.location.reload();
 					}
 				});
-		});
+			
+		
 	}});
 });
 
@@ -579,6 +629,7 @@ function doHangup() {
 	videocall.send({"message": hangup});
 	videocall.hangup();
 	yourusername = null;
+	location.reload();
 }
 
 function sendData() {
